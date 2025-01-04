@@ -1,0 +1,21 @@
+# Observer Configuration
+
+# Percentage of cores to enable when on battery (1-100)
+# Higher values mean more cores stay enabled on battery power
+battery_core_percentage = 25
+
+# Delay in milliseconds between enabling/disabling each core
+# Higher values make transitions smoother but slower
+transition_delay_ms = 500
+
+# How often to check power state and CPU load (in seconds)
+# Lower values make the manager more responsive but use more resources
+check_interval_sec = 5
+
+# CPU load threshold percentage to trigger core count adjustment
+# When average load goes above this, more cores will be enabled
+cpu_load_threshold = 40.0
+
+# Minimum number of cores to keep enabled
+# This should be at least 2 to maintain system responsiveness
+min_cores = 2
