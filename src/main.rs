@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
     ctrlc::set_handler(move || {
-        println!("Ctrl+C received, restoring cores and shutting down...");
+        info!("Shutdown signal received, initiating cleanup...");
         r.store(false, Ordering::SeqCst);
     })?;
 
