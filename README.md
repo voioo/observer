@@ -87,7 +87,7 @@ sudo journalctl -u observer -f
 ### Build Steps
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/observer.git
+git clone https://github.com/voioo/observer.git
 cd observer
 
 # Build
