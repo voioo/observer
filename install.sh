@@ -8,7 +8,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-BINARY_PATH="/usr/local/bin/observer"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BINARY_NAME="observer"
+BINARY_PATH="/usr/local/bin/$BINARY_NAME"
 CONFIG_DIR="/etc/observer"
 CONFIG_FILE="$CONFIG_DIR/config.toml"
 SERVICE_FILE="/etc/systemd/system/observer.service"
@@ -51,6 +53,18 @@ check_cpu() {
     fi
 }
 
+find_binary() {
+    if [ -f "$SCRIPT_DIR/$BINARY_NAME" ]; then
+        echo "$SCRIPT_DIR/$BINARY_NAME"
+    elif [ -f "$SCRIPT_DIR/$BINARY_NAME-linux-amd64" ]; then
+        echo "$SCRIPT_DIR/$BINARY_NAME-linux-amd64"
+    elif [ -f "$SCRIPT_DIR/target/release/$BINARY_NAME" ]; then
+        echo "$SCRIPT_DIR/target/release/$BINARY_NAME"
+    else
+        error "Could not find observer binary. Please make sure you're running this script from the correct directory"
+    fi
+}
+
 backup_config() {
     if [ -f "$CONFIG_FILE" ]; then
         BACKUP_FILE="$CONFIG_FILE.backup.$(date +%Y%m%d_%H%M%S)"
@@ -61,24 +75,35 @@ backup_config() {
 
 install_files() {
     info "Installing observer..."
-
+    
     mkdir -p "$CONFIG_DIR"
-
+    
+    BINARY=$(find_binary)
     info "Installing binary to $BINARY_PATH"
-    cp observer "$BINARY_PATH" || error "Failed to install binary"
+    cp "$BINARY" "$BINARY_PATH" || error "Failed to install binary"
     chmod +x "$BINARY_PATH"
+
+    if [ -f "$SCRIPT_DIR/config.toml" ]; then
+        CONFIG_SOURCE="$SCRIPT_DIR/config.toml"
+    else
+        error "Configuration file not found"
+    fi
 
     if [ ! -f "$CONFIG_FILE" ]; then
         info "Installing default configuration"
-        cp config.toml "$CONFIG_FILE" || error "Failed to install config"
+        cp "$CONFIG_SOURCE" "$CONFIG_FILE" || error "Failed to install config"
     else
         info "Keeping existing configuration"
         info "New default config available at $CONFIG_FILE.new"
-        cp config.toml "$CONFIG_FILE.new"
+        cp "$CONFIG_SOURCE" "$CONFIG_FILE.new"
     fi
 
-    info "Installing systemd service"
-    cp observer.service "$SERVICE_FILE" || error "Failed to install service"
+    if [ -f "$SCRIPT_DIR/observer.service" ]; then
+        info "Installing systemd service"
+        cp "$SCRIPT_DIR/observer.service" "$SERVICE_FILE" || error "Failed to install service"
+    else
+        error "Service file not found"
+    fi
 }
 
 set_permissions() {
