@@ -1,42 +1,47 @@
 # Observer
 
-Dynamically manages CPU cores based on power state and system load.
+A dynamic CPU core manager for Linux systems that "intelligently" manages CPU cores based on system load and power state to help reduce power consumption.
 
 ## Features
 
-- Automatically reduces active cores when running on battery
-- Dynamically scales cores based on CPU load
-- Proper handling of HyperThreading pairs
-- Configurable thresholds and settings
-- Systemd service integration
+- Dynamic core management:
+  - Automatically reduces active cores when running on battery
+  - Scales cores up/down based on real-time CPU load
+  - Proper handling of CPU HyperThreading pairs
+  - Smooth transitions between states
+  - Always maintains system responsiveness with minimum core count
 
-## Quick Install
+- Configurable settings:
+  - Battery mode core percentage
+  - CPU load thresholds for scaling
+  - Minimum core count
+  - Check intervals
+  - Core transition delays
 
-Install the latest version with:
+- System integration:
+  - Runs as a systemd service
+  - Graceful shutdown handling
+  - Proper logging with different verbosity levels
+  - Configuration file in TOML format
 
+## Installation
+
+### Arch Linux (AUR)
 ```bash
-curl -sSL https://raw.githubusercontent.com/voioo/observer/main/install.sh | sudo bash
+yay -S observer
 ```
 
-Or download and verify a specific release:
-
+### Manual Installation
+1. Download the appropriate archive for your architecture from the [releases page](https://github.com/voioo/observer/releases)
+2. Extract and install:
 ```bash
-# Download latest release
-VERSION=$(curl -s https://api.github.com/repos/voioo/observer/releases/latest | grep -oP '"tag_name": "\K(.*)(?=")')
-wget https://github.com/voioo/observer/releases/download/$VERSION/observer-linux-amd64.tar.gz
-wget https://github.com/voioo/observer/releases/download/$VERSION/observer-linux-amd64.sha256
-
-# Verify checksum
-sha256sum -c observer-linux-amd64.sha256
-
-# Extract and install
-tar xzf observer-linux-amd64.tar.gz
+tar xzf observer-linux-*.tar.gz
 sudo ./install.sh
 ```
 
 ## Configuration
 
-Edit `/etc/observer/config`:
+The configuration file is located at `/etc/observer/config.toml`:
 
 ```toml
 # Percentage of cores to enable when on battery (1-100)
@@ -57,37 +62,56 @@ min_cores = 2
 
 ## Usage
 
-The service starts automatically after installation. Control it with:
+Observer runs as a systemd service. Control it using:
 
 ```bash
+# Start the service
+sudo systemctl start observer
+
+# Enable on boot
+sudo systemctl enable observer
+
 # Check status
 sudo systemctl status observer
 
 # View logs
 sudo journalctl -u observer -f
-
-# Restart service
-sudo systemctl restart observer
-
-# Stop service
-sudo systemctl stop observer
 ```
 
 ## Building from Source
 
-```bash
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+### Prerequisites
+- Rust toolchain (1.70.0 or newer)
+- Cargo
 
-# Clone and build
-git clone https://github.com/voioo/observer.git
+### Build Steps
+```bash
+# Clone the repository
+git clone https://github.com/YOUR_USERNAME/observer.git
 cd observer
+
+# Build
 cargo build --release
 
-# Install
+# Install (optional)
 sudo ./install.sh
 ```
+
+## Architecture Support
+
+- [x] x86_64 (AMD64)
+- [ ] aarch64 (ARM64)
+- [ ] armv7 (32-bit ARM)
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the [0BSD License](LICENSE).
+
+## Acknowledgments
+
+- Inspired by various power management tools and CPU governors
+- Thanks to the Rust community for excellent crates
