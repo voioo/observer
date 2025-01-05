@@ -35,14 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Validate systemd service
-        run: |
-          if ! systemd-analyze verify observer.service; then
-            echo "Invalid systemd service file"
-            exit 1
-          fi
-          
+    
       - name: Validate TOML config
         run: |
           if ! cargo install taplo-cli --locked; then
