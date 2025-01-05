@@ -1,0 +1,20 @@
+[Unit]
+Description=Dynamic CPU Core Manager
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/observer
+Environment="RUST_LOG=info"
+Restart=always
+RestartSec=5
+
+# Create config directory if it doesn't exist
+ExecStartPre=/bin/mkdir -p /etc/observer
+
+# Ensure proper permissions
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
