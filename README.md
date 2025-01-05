@@ -48,7 +48,7 @@ yay -S observer
 2. Extract and install:
 ```bash
 tar xzf observer-linux-*.tar.gz
-sudo ./install.sh
+sudo chmod +x install.sh && sudo ./install.sh
 ```
 
 ## Configuration
@@ -106,7 +106,7 @@ cd observer
 cargo build --release
 
 # Install (optional)
-sudo ./install.sh
+sudo chmod +x install.sh && sudo ./install.sh
 ```
 
 ## Architecture Support
