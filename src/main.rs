@@ -44,7 +44,7 @@ impl CPUTopology {
                 format!("{}/cpu{}/topology/thread_siblings_list", cpu_path, core_id);
 
             // Stop if we can't find this CPU
-            if !fs::metadata(&topology_path).is_ok() {
+            if fs::metadata(&topology_path).is_err() {
                 break;
             }
 
