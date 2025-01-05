@@ -38,7 +38,7 @@ jobs:
       
       - name: Validate systemd service
         run: |
-          if ! systemd-analyze verify power-core-manager.service; then
+          if ! systemd-analyze verify observer.service; then
             echo "Invalid systemd service file"
             exit 1
           fi
