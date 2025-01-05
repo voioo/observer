@@ -2,9 +2,16 @@ name: CI
 
 on:
   pull_request:
-    branches: [ "main" ]
+    paths:
+      - '**.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
   push:
     branches: [ "main" ]
+    paths:
+      - '**.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
 
 env:
   CARGO_TERM_COLOR: always
@@ -35,7 +42,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-    
+      
+      - name: Validate systemd service
+        run: |
+          if ! systemd-analyze verify observer.service; then
+            echo "Invalid systemd service file"
+            exit 1
+          fi
+          
       - name: Validate TOML config
         run: |
           if ! cargo install taplo-cli --locked; then
