@@ -9,7 +9,25 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          
+      - name: Run tests
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy -- -D warnings
+          cargo test
+
   release:
+    needs: test
     name: Release - ${{ matrix.platform.release_for }}
     strategy:
       matrix:
@@ -19,17 +37,34 @@ jobs:
             target: x86_64-unknown-linux-gnu
             bin: observer
             name: observer-linux-amd64
+          - release_for: Linux-aarch64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            bin: observer
+            name: observer-linux-arm64
+          - release_for: Linux-arm
+            os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            bin: observer
+            name: observer-linux-armv7
 
     runs-on: ${{ matrix.platform.os }}
     
     steps:
       - uses: actions/checkout@v4
       
-      - name: Build binary
-        uses: actions-rs/cargo@v1
+      - name: Install cross-compilation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
+      
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          command: build
-          args: --release --target ${{ matrix.platform.target }}
+          targets: ${{ matrix.platform.target }}
+          
+      - name: Build binary
+        run: cargo build --release --target ${{ matrix.platform.target }}
           
       - name: Package Release
         shell: bash
@@ -53,3 +88,30 @@ jobs:
           files: |
             ${{ matrix.platform.name }}.tar.gz
             ${{ matrix.platform.name }}.sha256
+
+  aur-publish:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Update PKGBUILD version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          sed -i "s/pkgver=.*/pkgver=$VERSION/" PKGBUILD
+          NEW_SHA256=$(curl -sL https://github.com/${{ github.repository }}/releases/download/v${VERSION}/observer-linux-amd64.sha256 | awk '{print $1}')
+          sed -i "s/sha256sums=('.*')/sha256sums=('${NEW_SHA256}')/" PKGBUILD
+          
+      - name: Generate .SRCINFO
+        run: |
+          docker run --rm -v $PWD:/pkg -w /pkg archlinux:base-devel bash -c 'pacman -Syu --noconfirm && pacman -S --noconfirm pacman-contrib && su nobody -c "makepkg --printsrcinfo" > .SRCINFO'
+          
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        with:
+          pkgname: observer
+          pkgbuild: ./PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to version ${{ github.ref_name }}"

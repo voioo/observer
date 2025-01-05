@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Run tests
+        run: cargo test
+
+  check-configs:
+    name: Validate Configurations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Validate systemd service
+        run: |
+          if ! systemd-analyze verify power-core-manager.service; then
+            echo "Invalid systemd service file"
+            exit 1
+          fi
+          
+      - name: Validate TOML config
+        run: |
+          if ! cargo install taplo-cli --locked; then
+            echo "Failed to install TOML validator"
+            exit 1
+          fi
+          taplo lint config.toml

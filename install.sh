@@ -26,11 +26,18 @@ chmod +x /usr/local/bin/observer
 
 # Install config
 echo "Installing configuration..."
-if [ ! -f /etc/observer/config ]; then
-    cp config.toml /etc/observer/config
+if [ ! -f /etc/observer/config.toml ]; then
+    cp config.toml /etc/observer/config.toml
+    echo "Installed new configuration file"
 else
     echo "Config file already exists, keeping existing configuration"
+    echo "New config file available at /etc/observer/config.toml.new"
+    cp config.toml /etc/observer/config.toml.new
 fi
+
+# Set proper permissions
+chown -R root:root /etc/observer
+chmod 644 /etc/observer/config.toml
 
 # Install service
 echo "Installing systemd service..."
@@ -40,8 +47,9 @@ cp observer.service /etc/systemd/system/
 echo "Configuring service..."
 systemctl daemon-reload
 systemctl enable observer
-systemctl start observer
+systemctl restart observer
 
 echo -e "${GREEN}Installation complete!${NC}"
 echo "Check service status with: systemctl status observer"
 echo "View logs with: journalctl -u observer -f"
+echo "Configuration file is at: /etc/observer/config.toml"

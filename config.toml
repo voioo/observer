@@ -2,7 +2,7 @@
 
 # Percentage of cores to enable when on battery (1-100)
 # Higher values mean more cores stay enabled on battery power
-battery_core_percentage = 25
+battery_core_percentage = 50
 
 # Delay in milliseconds between enabling/disabling each core
 # Higher values make transitions smoother but slower
@@ -14,7 +14,7 @@ check_interval_sec = 5
 
 # CPU load threshold percentage to trigger core count adjustment
 # When average load goes above this, more cores will be enabled
-cpu_load_threshold = 40.0
+cpu_load_threshold = 80.0
 
 # Minimum number of cores to keep enabled
 # This should be at least 2 to maintain system responsiveness

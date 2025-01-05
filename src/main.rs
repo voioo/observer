@@ -21,11 +21,11 @@ struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
-            battery_core_percentage: 25,
+            battery_core_percentage: 50,
             transition_delay_ms: 500,
             check_interval_sec: 5,
-            cpu_load_threshold: 40.0,
-            min_cores: 1,
+            cpu_load_threshold: 80.0,
+            min_cores: 2,
         }
     }
 }
@@ -239,12 +239,41 @@ impl CoreManager {
 }
 
 fn load_config() -> Result<Settings, ConfigError> {
-    let config = Config::builder()
-        .add_source(File::with_name("/etc/observer/config").required(false))
-        .add_source(File::with_name("config").required(false))
-        .build()?;
+    debug!("Attempting to load configuration...");
+    
+    let config_paths = [
+        "/etc/observer/config.toml",
+        "/etc/observer/config",
+        "config.toml",
+        "config"
+    ];
 
-    config.try_deserialize().or_else(|_| Ok(Settings::default()))
+    let mut builder = Config::builder();
+    
+    for path in &config_paths {
+        debug!("Checking for config at: {}", path);
+        builder = builder.add_source(File::with_name(path).required(false));
+    }
+
+    match builder.build() {
+        Ok(config) => {
+            match config.try_deserialize() {
+                Ok(settings) => {
+                    info!("Successfully loaded configuration");
+                    debug!("Loaded settings: {:?}", settings);
+                    Ok(settings)
+                }
+                Err(e) => {
+                    warn!("Failed to deserialize config, using defaults: {}", e);
+                    Ok(Settings::default())
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Failed to load config, using defaults: {}", e);
+            Ok(Settings::default())
+        }
+    }
 }
 
 fn is_on_battery(power_path: &str) -> Result<bool, Box<dyn Error>> {
