@@ -26,6 +26,12 @@ A dynamic CPU core manager for Linux systems that "intelligently" manages CPU co
 
 ## Installation
 
+### Quick Install
+
+```bash
+curl -sSL https://raw.githubusercontent.com/voioo/observer/main/install.sh | sudo bash
+```
+
 ### Arch Linux (AUR)
 ```bash
 yay -S observer
