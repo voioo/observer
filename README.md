@@ -117,7 +117,7 @@ sudo chmod +x install.sh && sudo ./install.sh
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Check the [contributing guide](https://github.com/voioo/observer/blob/main/CONTRIBUTING.md) and feel free to submit a PR.
 
 ## License
 
