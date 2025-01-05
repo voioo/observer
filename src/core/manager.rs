@@ -141,7 +141,7 @@ impl CoreManager {
 impl Drop for CoreManager {
     fn drop(&mut self) {
         info!("Cleaning up - restoring all cores...");
-        
+
         let available_cores = Self::get_available_cores();
         for core_num in available_cores.iter().skip(1) {
             let online_path = format!("/sys/devices/system/cpu/cpu{}/online", core_num);
@@ -150,7 +150,7 @@ impl Drop for CoreManager {
                 Err(e) => error!("Failed to enable core {} during cleanup: {}", core_num, e),
             }
         }
-        
+
         info!("Cleanup complete - all cores should be enabled");
     }
 }
