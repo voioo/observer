@@ -5,6 +5,7 @@ use std::thread;
 use std::time::Duration;
 use sysinfo::System;
 
+use super::load_tracker::LoadTracker;
 use super::topology::CPUTopology;
 use crate::config::Settings;
 
@@ -13,16 +14,55 @@ pub struct CoreManager {
     sys: System,
     current_cores: usize,
     topology: CPUTopology,
+    load_tracker: LoadTracker,
 }
 
 impl CoreManager {
     pub fn new(settings: Settings) -> Self {
         CoreManager {
-            settings,
+            settings: settings.clone(),
             sys: System::new_all(),
             current_cores: num_cpus::get(),
             topology: CPUTopology::new(),
+            load_tracker: LoadTracker::new(Duration::from_secs(settings.load_window_sec)),
         }
+    }
+
+    pub fn current_cores(&self) -> usize {
+        self.current_cores
+    }
+
+    fn calculate_current_load(&self) -> f32 {
+        let active_cpus: Vec<_> = self
+            .sys
+            .cpus()
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| {
+                if *i == 0 {
+                    return true;
+                } // CPU0 always active
+                let cpu_path = format!("/sys/devices/system/cpu/cpu{}/online", i);
+                fs::read_to_string(&cpu_path)
+                    .map(|content| content.trim() == "1")
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        let active_count = active_cpus.len().max(1); // Avoid division by zero
+
+        let total_load: f32 = active_cpus
+            .iter()
+            .map(|(_, cpu)| cpu.cpu_usage())
+            .sum::<f32>();
+
+        let avg_load = total_load / active_count as f32;
+        debug!(
+            "Load calculation: total_load={:.2}% across {} active cores, avg_load={:.2}%",
+            total_load, active_count, avg_load
+        );
+
+        total_load
     }
 
     pub fn get_available_cores() -> Vec<usize> {
@@ -52,6 +92,27 @@ impl CoreManager {
 
     pub fn get_optimal_core_count(&mut self, on_battery: bool) -> usize {
         self.sys.refresh_cpu_all();
+
+        let current_load = self.calculate_current_load();
+        debug!("Current CPU load: {:.2}%", current_load);
+        self.load_tracker.add_measurement(current_load);
+
+        let time_since_last_change = self.load_tracker.time_since_last_change();
+        debug!(
+            "Time since last core change: {:.2}s (minimum: {}s)",
+            time_since_last_change.as_secs_f64(),
+            self.settings.min_change_interval_sec
+        );
+
+        if time_since_last_change < Duration::from_secs(self.settings.min_change_interval_sec) {
+            debug!(
+                "Skipping core adjustment - min interval not reached ({:.2}s remaining)",
+                self.settings.min_change_interval_sec as f64 - time_since_last_change.as_secs_f64()
+            );
+            return self.current_cores;
+        }
+
+        let avg_load = self.load_tracker.get_average();
         let total_cores = Self::get_available_cores().len();
 
         let base_cores = if on_battery {
@@ -60,41 +121,46 @@ impl CoreManager {
             total_cores
         };
 
-        // Calculate average load
-        let active_cpus: Vec<_> = self
-            .sys
-            .cpus()
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| {
-                if *i == 0 {
-                    return true;
-                }
-                let cpu_path = format!("/sys/devices/system/cpu/cpu{}/online", i);
-                fs::read_to_string(&cpu_path)
-                    .map(|content| content.trim() == "1")
-                    .unwrap_or(false)
-            })
-            .collect();
-
-        let avg_load = active_cpus
-            .iter()
-            .map(|(_, cpu)| cpu.cpu_usage())
-            .sum::<f32>()
-            / active_cpus.len() as f32;
-
-        debug!("Current CPU load: {:.2}%", avg_load);
-
-        // Adjust cores based on load
-        let mut optimal_cores = if avg_load > self.settings.cpu_load_threshold {
-            total_cores
-        } else if avg_load < self.settings.cpu_load_threshold / 2.0 {
-            base_cores.saturating_sub(2)
+        // Hysteresis-based decision
+        let target_cores = if on_battery {
+            if avg_load > self.settings.cpu_load_threshold * 1.2 {
+                // 20% above threshold
+                debug!(
+                    "Load significantly high ({:.2}%), increasing cores",
+                    avg_load
+                );
+                (base_cores + 2).min(total_cores)
+            } else if avg_load < self.settings.cpu_load_threshold * 0.5 {
+                // 50% below threshold
+                debug!(
+                    "Load significantly low ({:.2}%), decreasing cores",
+                    avg_load
+                );
+                base_cores.saturating_sub(2)
+            } else {
+                debug!(
+                    "Load within threshold range ({:.2}%), maintaining cores",
+                    avg_load
+                );
+                self.current_cores
+            }
         } else {
-            base_cores
+            total_cores
         };
 
-        optimal_cores = optimal_cores.max(self.settings.min_cores).min(total_cores);
+        let optimal_cores = target_cores.clamp(self.settings.min_cores, total_cores);
+
+        if optimal_cores != self.current_cores {
+            self.load_tracker.record_change();
+            info!(
+                "Adjusting cores from {} to {} (load: {:.2}%, on_battery: {})",
+                self.current_cores,
+                optimal_cores,
+                avg_load,
+                on_battery
+            );
+        }
+
         optimal_cores
     }
 

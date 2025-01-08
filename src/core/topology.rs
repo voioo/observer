@@ -20,12 +20,10 @@ impl CPUTopology {
             let topology_path =
                 format!("{}/cpu{}/topology/thread_siblings_list", cpu_path, core_id);
 
-            // Stop if we can't find this CPU
             if fs::metadata(&topology_path).is_err() {
                 break;
             }
 
-            // Read thread siblings
             if let Ok(siblings) = fs::read_to_string(&topology_path) {
                 let nums: Vec<usize> = siblings
                     .trim()
@@ -33,7 +31,6 @@ impl CPUTopology {
                     .filter_map(|s| s.parse().ok())
                     .collect();
 
-                // Only add each pair once, using the lower number as primary
                 if nums.len() == 2 && nums[0] == core_id {
                     pairs.push((nums[0], nums[1]));
                 }
