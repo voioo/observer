@@ -154,10 +154,7 @@ impl CoreManager {
             self.load_tracker.record_change();
             info!(
                 "Adjusting cores from {} to {} (load: {:.2}%, on_battery: {})",
-                self.current_cores,
-                optimal_cores,
-                avg_load,
-                on_battery
+                self.current_cores, optimal_cores, avg_load, on_battery
             );
         }
 
