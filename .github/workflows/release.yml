@@ -66,9 +66,14 @@ jobs:
         with:
           targets: ${{ matrix.platform.target }}
       
+      - name: Install cross
+        run: cargo install cross
+      
       - name: Build binary
         run: |
-          cargo build --release --target ${{ matrix.platform.target }}
+          for target in ${{ matrix.platform.target }}; do
+            cross build --release --target $target
+          done
           
       - name: Prepare release assets
         run: |
@@ -79,10 +84,17 @@ jobs:
           cp install.sh release/
           cd release && tar czf ../${{ matrix.platform.name }}.tar.gz *
       
-      - name: Upload release
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum ${{ matrix.platform.name }} > ${{ matrix.platform.name }}.sha256
+          
+      - name: Upload release with checksums
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ matrix.platform.name }}.tar.gz
+          files: |
+            ${{ matrix.platform.name }}.tar.gz
+            ${{ matrix.platform.name }}.sha256
 
   aur-publish:
     needs: release

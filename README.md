@@ -111,9 +111,16 @@ sudo chmod +x install.sh && sudo ./install.sh
 
 ## Architecture Support
 
-- [x] x86_64 (AMD64)
-- [x] aarch64 (ARM64)
-- [x] armv7 (32-bit ARM)
+- [x] x86_64 (AMD64) - Full support
+- [x] aarch64 (ARM64) - Full support
+- [x] armv7 (32-bit ARM) - Basic support
+  - Note: Some ARM systems might have limited CPU core control capabilities
+  - Performance might vary based on specific hardware
+
+### Architecture-Specific Considerations
+- **x86_64**: Full support for all features including HyperThreading detection
+- **aarch64**: Full support, optimized for modern ARM64 processors
+- **armv7**: Basic support, some features might be limited by hardware capabilities
 
 ## Contributing
 
