@@ -44,29 +44,39 @@ check_system() {
 
 check_cpu() {
     if [ ! -d "/sys/devices/system/cpu" ]; then
-        warn "CPU management interface not found"
+        error "CPU management interface not found"
     fi
 
     CPU1_ONLINE="/sys/devices/system/cpu/cpu1/online"
     if [ ! -f "$CPU1_ONLINE" ]; then
-        warn "CPU core control might not be supported on this system"
+        warn "CPU core control might not be supported on this system. Some features may not work."
     fi
+
+    local arch=$(detect_arch)
+    case "$arch" in
+        amd64|arm64)
+            info "Running on supported 64-bit architecture: $arch"
+            ;;
+        armv7)
+            warn "Running on 32-bit ARM. Some features might be limited."
+            ;;
+    esac
 }
 
 detect_arch() {
     local arch=$(uname -m)
     case "$arch" in
-        x86_64)
+        x86_64|amd64)
             echo "amd64"
             ;;
-        aarch64|arm64)
+        aarch64|arm64|armv8*|armv9*)
             echo "arm64"
             ;;
-        armv7l|armv7)
+        armv7*|armv6*|arm)
             echo "armv7"
             ;;
         *)
-            error "Unsupported architecture: $arch"
+            error "Unsupported architecture: $arch (supported: x86_64, aarch64, armv7)"
             ;;
     esac
 }
