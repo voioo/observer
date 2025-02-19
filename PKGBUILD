@@ -3,13 +3,13 @@ pkgname=observer
 pkgver=0.1.0
 pkgrel=1
 pkgdesc="Dynamic CPU core manager for power saving"
-arch=('x86_64')
+arch=('x86_64' 'aarch64' 'armv7h')
 url="https://github.com/voioo/observer"
 license=('0BSD')
 depends=('gcc-libs')
 makedepends=('rust' 'cargo')
 backup=('etc/observer/config.toml')
-source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-linux-amd64.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-linux-\$CARCH.tar.gz")
 sha256sums=('SKIP') 
 
 package() {

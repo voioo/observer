@@ -44,7 +44,7 @@ check_system() {
 
 check_cpu() {
     if [ ! -d "/sys/devices/system/cpu" ]; then
-        error "CPU management interface not found"
+        warn "CPU management interface not found"
     fi
 
     CPU1_ONLINE="/sys/devices/system/cpu/cpu1/online"
@@ -53,15 +53,36 @@ check_cpu() {
     fi
 }
 
+detect_arch() {
+    local arch=$(uname -m)
+    case "$arch" in
+        x86_64)
+            echo "amd64"
+            ;;
+        aarch64|arm64)
+            echo "arm64"
+            ;;
+        armv7l|armv7)
+            echo "armv7"
+            ;;
+        *)
+            error "Unsupported architecture: $arch"
+            ;;
+    esac
+}
+
 find_binary() {
+    local arch=$(detect_arch)
+    local binary_suffix="linux-${arch}"
+    
     if [ -f "$SCRIPT_DIR/$BINARY_NAME" ]; then
         echo "$SCRIPT_DIR/$BINARY_NAME"
-    elif [ -f "$SCRIPT_DIR/$BINARY_NAME-linux-amd64" ]; then
-        echo "$SCRIPT_DIR/$BINARY_NAME-linux-amd64"
+    elif [ -f "$SCRIPT_DIR/$BINARY_NAME-${binary_suffix}" ]; then
+        echo "$SCRIPT_DIR/$BINARY_NAME-${binary_suffix}"
     elif [ -f "$SCRIPT_DIR/target/release/$BINARY_NAME" ]; then
         echo "$SCRIPT_DIR/target/release/$BINARY_NAME"
     else
-        error "Could not find observer binary. Please make sure you're running this script from the correct directory"
+        error "Could not find observer binary for ${arch}. Please make sure you're using the correct package for your architecture."
     fi
 }
 

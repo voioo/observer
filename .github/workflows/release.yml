@@ -40,6 +40,16 @@ jobs:
             target: x86_64-unknown-linux-gnu
             bin: observer
             name: observer-linux-amd64
+          - release_for: Linux-aarch64
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            bin: observer
+            name: observer-linux-arm64
+          - release_for: Linux-armv7
+            os: ubuntu-latest
+            target: armv7-unknown-linux-gnueabihf
+            bin: observer
+            name: observer-linux-armv7
 
     runs-on: ${{ matrix.platform.os }}
     
@@ -55,32 +65,24 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform.target }}
-          
+      
       - name: Build binary
-        run: cargo build --release --target ${{ matrix.platform.target }}
+        run: |
+          cargo build --release --target ${{ matrix.platform.target }}
           
-      - name: Package Release
-        shell: bash
+      - name: Prepare release assets
         run: |
           mkdir -p release
-          cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} release/
-          cp install.sh release/
-          cp observer.service release/
+          cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} release/${{ matrix.platform.name }}
           cp config.toml release/
-          cd release
-          tar czf ../${{ matrix.platform.name }}.tar.gz *
-          
-      - name: Generate SHA256 checksum
-        run: |
-          cd ${{ github.workspace }}
-          sha256sum ${{ matrix.platform.name }}.tar.gz > ${{ matrix.platform.name }}.sha256
-          
-      - name: Upload Release
+          cp observer.service release/
+          cp install.sh release/
+          cd release && tar czf ../${{ matrix.platform.name }}.tar.gz *
+      
+      - name: Upload release
         uses: softprops/action-gh-release@v1
         with:
-          files: |
-            ${{ matrix.platform.name }}.tar.gz
-            ${{ matrix.platform.name }}.sha256
+          files: ${{ matrix.platform.name }}.tar.gz
 
   aur-publish:
     needs: release

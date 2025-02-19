@@ -112,8 +112,8 @@ sudo chmod +x install.sh && sudo ./install.sh
 ## Architecture Support
 
 - [x] x86_64 (AMD64)
-- [ ] aarch64 (ARM64)
-- [ ] armv7 (32-bit ARM)
+- [x] aarch64 (ARM64)
+- [x] armv7 (32-bit ARM)
 
 ## Contributing
 
@@ -127,3 +127,10 @@ This project is licensed under the [0BSD License](LICENSE).
 
 - Inspired by various power management tools and CPU governors
 - Thanks to the Rust community for excellent crates
+
+### Installation
+
+Download the appropriate archive for your architecture:
+- AMD64 (x86_64): `observer-linux-amd64.tar.gz`
+- ARM64 (aarch64): `observer-linux-arm64.tar.gz`
+- ARMv7 (32-bit): `observer-linux-armv7.tar.gz`
