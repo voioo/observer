@@ -9,5 +9,5 @@ ctrlc = { version = "3.4.5", features = ["termination"] }
 env_logger = "0.11.6"
 log = "0.4.25"
 num_cpus = "1.16.0"
-serde = "1.0.217"
+serde = "1.0.218"
 sysinfo = "0.33.1"
