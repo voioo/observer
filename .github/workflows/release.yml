@@ -1,5 +1,12 @@
 name: Release
 
+workflow_dispatch:
+  inputs:
+    version:
+      description: 'Version to release'
+      required: true
+      default: 'latest'
+
 on:
   push:
     tags:
