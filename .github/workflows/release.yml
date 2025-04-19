@@ -102,12 +102,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Update PKGBUILD version
+      - name: Update PKGBUILD
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          sed -i "s/pkgver=.*/pkgver=$VERSION/" PKGBUILD
-          NEW_SHA256=$(curl -sL https://github.com/${{ github.repository }}/releases/download/v${VERSION}/observer-linux-amd64.sha256 | awk '{print $1}')
-          sed -i "s/sha256sums=('.*')/sha256sums=('${NEW_SHA256}')/" PKGBUILD
+          PKGVER="${{ steps.vars.outputs.PKGVER }}"
+          REPO_URL="${{ steps.vars.outputs.REPO_URL }}"
+          DL_URL="${{ steps.vars.outputs.DOWNLOAD_URL }}" # Re-fetch or pass via env
+          SHA_AMD64="${{ steps.checksums.outputs.SHA_AMD64 }}"
+          SHA_ARM64="${{ steps.checksums.outputs.SHA_ARM64 }}"
+          SHA_ARMV7="${{ steps.checksums.outputs.SHA_ARMV7 }}"
+
+          echo "Updating PKGBUILD for version $PKGVER..."
+
+          # Update pkgver
+          sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
+          # Reset pkgrel
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          # Update source URLs (using :: to rename the downloaded file)
+          sed -i "s|^source_x86_64=.*|source_x86_64=("observer-\$pkgver-amd64.tar.gz::$DL_URL/observer-linux-amd64.tar.gz")|" PKGBUILD
+          sed -i "s|^source_aarch64=.*|source_aarch64=("observer-\$pkgver-arm64.tar.gz::$DL_URL/observer-linux-arm64.tar.gz")|" PKGBUILD
+          sed -i "s|^source_armv7h=.*|source_armv7h=("observer-\$pkgver-armv7.tar.gz::$DL_URL/observer-linux-armv7.tar.gz")|" PKGBUILD
+          # Update sha256sums
+          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('$SHA_AMD64')/" PKGBUILD
+          sed -i "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('$SHA_ARM64')/" PKGBUILD
+          sed -i "s/^sha256sums_armv7h=.*/sha256sums_armv7h=('$SHA_ARMV7')/" PKGBUILD
+
+          echo "PKGBUILD updated:"
+          cat PKGBUILD
           
       - name: Generate .SRCINFO
         run: |
