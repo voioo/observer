@@ -1,0 +1,113 @@
+name: Update AUR PKGBUILD
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write # Needed to commit changes back to the repository
+
+jobs:
+  update-pkgbuild:
+    runs-on: ubuntu-latest
+    container: archlinux:latest # Use Arch Linux container for makepkg
+    steps:
+      - name: Install necessary tools (sudo, git, curl)
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm sudo git curl base-devel # base-devel includes makepkg
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch depth 0 to get all history, needed for git push later if needed
+          # Or just use token if committing directly to the release branch
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get release version
+        id: get_version
+        run: echo "VERSION=${{ github.event.release.tag_name }}" | sed 's/^v//' >> $GITHUB_OUTPUT # Remove leading 'v' if present
+
+      - name: Set variables
+        id: vars
+        run: |
+          PKGVER=${{ steps.get_version.outputs.VERSION }}
+          echo "PKGVER=$PKGVER" >> $GITHUB_OUTPUT
+          echo "REPO_URL=https://github.com/${{ github.repository }}" >> $GITHUB_OUTPUT
+          echo "RELEASE_URL=${{ github.event.release.html_url }}" >> $GITHUB_OUTPUT
+          echo "DOWNLOAD_URL=${{ github.event.release.tarball_url }}/../../download/${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT # Base download URL
+
+      - name: Download assets and calculate checksums
+        id: checksums
+        run: |
+          PKGNAME="observer" # Assuming pkgname is observer
+          PKGVER="${{ steps.vars.outputs.PKGVER }}"
+          DL_URL="${{ steps.vars.outputs.DOWNLOAD_URL }}"
+
+          echo "Downloading assets for version $PKGVER from $DL_URL..."
+
+          curl -L -o "observer-linux-amd64.tar.gz" "$DL_URL/observer-linux-amd64.tar.gz"
+          curl -L -o "observer-linux-arm64.tar.gz" "$DL_URL/observer-linux-arm64.tar.gz"
+          curl -L -o "observer-linux-armv7.tar.gz" "$DL_URL/observer-linux-armv7.tar.gz"
+
+          echo "Calculating checksums..."
+          SHA_AMD64=$(sha256sum observer-linux-amd64.tar.gz | awk '{print $1}')
+          SHA_ARM64=$(sha256sum observer-linux-arm64.tar.gz | awk '{print $1}')
+          SHA_ARMV7=$(sha256sum observer-linux-armv7.tar.gz | awk '{print $1}')
+
+          echo "SHA_AMD64=$SHA_AMD64" >> $GITHUB_OUTPUT
+          echo "SHA_ARM64=$SHA_ARM64" >> $GITHUB_OUTPUT
+          echo "SHA_ARMV7=$SHA_ARMV7" >> $GITHUB_OUTPUT
+
+          echo "Checksums:"
+          echo "amd64: $SHA_AMD64"
+          echo "arm64: $SHA_ARM64"
+          echo "armv7: $SHA_ARMV7"
+
+      - name: Update PKGBUILD
+        run: |
+          PKGVER="${{ steps.vars.outputs.PKGVER }}"
+          REPO_URL="${{ steps.vars.outputs.REPO_URL }}"
+          DL_URL="${{ steps.vars.outputs.DOWNLOAD_URL }}" # Re-fetch or pass via env
+          SHA_AMD64="${{ steps.checksums.outputs.SHA_AMD64 }}"
+          SHA_ARM64="${{ steps.checksums.outputs.SHA_ARM64 }}"
+          SHA_ARMV7="${{ steps.checksums.outputs.SHA_ARMV7 }}"
+
+          echo "Updating PKGBUILD for version $PKGVER..."
+
+          # Update pkgver
+          sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
+          # Reset pkgrel
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          # Update source URLs (using :: to rename the downloaded file)
+          sed -i "s|^source_x86_64=.*|source_x86_64=("observer-\$pkgver-amd64.tar.gz::$DL_URL/observer-linux-amd64.tar.gz")|" PKGBUILD
+          sed -i "s|^source_aarch64=.*|source_aarch64=("observer-\$pkgver-arm64.tar.gz::$DL_URL/observer-linux-arm64.tar.gz")|" PKGBUILD
+          sed -i "s|^source_armv7h=.*|source_armv7h=("observer-\$pkgver-armv7.tar.gz::$DL_URL/observer-linux-armv7.tar.gz")|" PKGBUILD
+          # Update sha256sums
+          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('$SHA_AMD64')/" PKGBUILD
+          sed -i "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('$SHA_ARM64')/" PKGBUILD
+          sed -i "s/^sha256sums_armv7h=.*/sha256sums_armv7h=('$SHA_ARMV7')/" PKGBUILD
+
+          echo "PKGBUILD updated:"
+          cat PKGBUILD
+
+      - name: Update .SRCINFO
+        run: |
+          echo "Generating .SRCINFO..."
+          makepkg --printsrcinfo > .SRCINFO
+          echo ".SRCINFO generated:"
+          cat .SRCINFO
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add PKGBUILD .SRCINFO
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Update PKGBUILD and .SRCINFO for release ${{ steps.get_version.outputs.VERSION }}"
+            # Push to the branch the release was tagged from
+            git push origin HEAD:${{ github.ref }}
+          fi 
