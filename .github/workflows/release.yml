@@ -1,13 +1,14 @@
 name: Release
 
-workflow_dispatch:
-  inputs:
-    version:
-      description: 'Version to release'
-      required: true
-      default: 'latest'
+
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release'
+        required: true
+        default: 'latest'
   push:
     tags:
       - 'v*'
