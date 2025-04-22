@@ -95,7 +95,10 @@ impl CPUTopology {
 
         // Determine frequency threshold for P vs E cores (e.g., 75% of max)
         let freq_threshold = (max_freq_overall as f64 * 0.75) as usize;
-        debug!("Max CPU freq detected: {} KHz, Threshold for E-cores: < {} KHz", max_freq_overall, freq_threshold);
+        debug!(
+            "Max CPU freq detected: {} KHz, Threshold for E-cores: < {} KHz",
+            max_freq_overall, freq_threshold
+        );
 
         let mut final_cores = Vec::new();
         let mut processed_ids = std::collections::HashSet::new(); // Keep track of processed core IDs
@@ -116,14 +119,18 @@ impl CPUTopology {
 
                 let core_type = match freq_opt {
                     Some(freq) => {
-                        if max_freq_overall > 0 && freq < freq_threshold {
+                        // Compare dereferenced freq with freq_threshold
+                        if max_freq_overall > 0 && *freq < freq_threshold {
                             CoreType::Efficiency
                         } else {
                             CoreType::Performance
                         }
                     }
                     None => {
-                        warn!("Could not determine max frequency for CPU {}, classifying as Unknown.", core_id);
+                        warn!(
+                            "Could not determine max frequency for CPU {}, classifying as Unknown.",
+                            core_id
+                        );
                         CoreType::Unknown
                     }
                 };
@@ -149,12 +156,20 @@ impl CPUTopology {
             }
         }
 
-        info!("Detected CPU Topology: {} Physical Cores ({} P-cores, {} E-cores)", final_cores.len(), p_core_count, e_core_count);
+        info!(
+            "Detected CPU Topology: {} Physical Cores ({} P-cores, {} E-cores)",
+            final_cores.len(),
+            p_core_count,
+            e_core_count
+        );
         if p_core_count + e_core_count != final_cores.len() {
-             warn!("Mismatch in core counts, some cores have Unknown type.");
+            warn!("Mismatch in core counts, some cores have Unknown type.");
         }
         for core in &final_cores {
-            debug!("  Core {}: Type={:?}, Sibling={}", core.id, core.core_type, core.sibling_id);
+            debug!(
+                "  Core {}: Type={:?}, Sibling={}",
+                core.id, core.core_type, core.sibling_id
+            );
         }
 
         CPUTopology {
@@ -172,127 +187,5 @@ impl CPUTopology {
             num_p_cores: 0,
             num_e_cores: 0,
         }
-    }
-
-    #[cfg(target_os = "linux")]
-    pub fn get_cores_to_enable(&self, target_count: usize) -> Vec<usize> {
-        let total_logical_cores = self.cores.len() * 2; // Assuming SMT2 where siblings != id
-        let target_count = target_count.max(1).min(total_logical_cores);
-
-        let mut enabled_cores = std::collections::HashSet::new();
-
-        // Separate cores by type for easier processing
-        let p_cores: Vec<&CoreInfo> = self
-            .cores
-            .iter()
-            .filter(|c| c.core_type == CoreType::Performance)
-            .collect();
-        let e_cores: Vec<&CoreInfo> = self
-            .cores
-            .iter()
-            .filter(|c| c.core_type == CoreType::Efficiency)
-            .collect();
-        let unknown_cores: Vec<&CoreInfo> = self
-            .cores
-            .iter()
-            .filter(|c| c.core_type == CoreType::Unknown)
-            .collect();
-
-        // Helper function to try adding a core and optionally its sibling
-        let mut try_add = |core_id: usize, sibling_id: usize, is_p_core: bool| {
-            if enabled_cores.len() < target_count {
-                enabled_cores.insert(core_id);
-            }
-            // Add sibling only if needed, target > 1, and it's a P-core or we still need cores
-            if enabled_cores.len() < target_count && target_count > 1 && core_id != sibling_id && (is_p_core || enabled_cores.len() < self.num_p_cores * 2) {
-                 enabled_cores.insert(sibling_id);
-            }
-        };
-
-        // 1. Ensure Core 0 is always enabled (find its info)
-        if let Some(core0_info) = self.cores.iter().find(|c| c.id == 0) {
-            try_add(core0_info.id, core0_info.sibling_id, core0_info.core_type == CoreType::Performance);
-        } else {
-            // Fallback: If core 0 wasn't in our list (unlikely), just add 0
-            if target_count > 0 {
-                enabled_cores.insert(0);
-            }
-        }
-
-        // 2. Fill remaining P-cores and their siblings
-        for p_core in p_cores {
-            if !enabled_cores.contains(&p_core.id) {
-                try_add(p_core.id, p_core.sibling_id, true);
-            }
-            if enabled_cores.len() >= target_count {
-                break;
-            }
-        }
-
-        // 3. Fill E-cores if needed (prioritize the main core ID first)
-        if enabled_cores.len() < target_count {
-            for e_core in &e_cores {
-                 if enabled_cores.len() < target_count && !enabled_cores.contains(&e_core.id) {
-                     enabled_cores.insert(e_core.id);
-                 }
-                 if enabled_cores.len() >= target_count {
-                     break;
-                 }
-            }
-        }
-        // 3b. Fill E-core siblings if needed
-        if enabled_cores.len() < target_count {
-            for e_core in &e_cores {
-                 if enabled_cores.len() < target_count && e_core.id != e_core.sibling_id && !enabled_cores.contains(&e_core.sibling_id) {
-                     enabled_cores.insert(e_core.sibling_id);
-                 }
-                 if enabled_cores.len() >= target_count {
-                     break;
-                 }
-            }
-        }
-
-        // 4. Fill Unknown cores if still needed (same logic as E-cores)
-        if enabled_cores.len() < target_count {
-            for u_core in &unknown_cores {
-                 if enabled_cores.len() < target_count && !enabled_cores.contains(&u_core.id) {
-                     enabled_cores.insert(u_core.id);
-                 }
-                 if enabled_cores.len() >= target_count {
-                     break;
-                 }
-            }
-        }
-        if enabled_cores.len() < target_count {
-            for u_core in &unknown_cores {
-                 if enabled_cores.len() < target_count && u_core.id != u_core.sibling_id && !enabled_cores.contains(&u_core.sibling_id) {
-                     enabled_cores.insert(u_core.sibling_id);
-                 }
-                 if enabled_cores.len() >= target_count {
-                     break;
-                 }
-            }
-        }
-
-        let mut final_cores: Vec<usize> = enabled_cores.into_iter().collect();
-        final_cores.sort();
-        debug!(
-            "Targeting {} cores on Linux ({}P, {}E). Enabling cores: {:?}",
-            target_count, self.num_p_cores, self.num_e_cores, final_cores
-        );
-        final_cores
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    pub fn get_cores_to_enable(&self, _target_count: usize) -> Vec<usize> {
-        let target_count = _target_count.max(1);
-        // On non-linux, we don't know topology, just return the first N cores.
-        // The actual enabling/disabling won't happen anyway.
-        let cores: Vec<usize> = (0..target_count).collect();
-        debug!(
-            "Targeting {} cores on non-Linux, returning simple range: {:?}",
-            target_count, cores
-        );
-        cores
     }
 }
