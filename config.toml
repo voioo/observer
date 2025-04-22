@@ -1,20 +1,39 @@
-# Percentage of cores to enable when on battery (1-100)
-battery_core_percentage = 50
-
-# Delay in milliseconds between enabling/disabling each core
-transition_delay_ms = 500
-
-# How often to check power state and CPU load (in seconds)
-check_interval_sec = 5
-
-# CPU load threshold percentage to trigger core count adjustment
-cpu_load_threshold = 75.0
-
-# Minimum number of cores to keep enabled
+# Minimum number of logical cores to keep enabled
+# Reasoning: Ensures basic responsiveness, avoids potential stalls from single-core operation.
 min_cores = 2
 
-# Minimum time between core count changes (in seconds)
-min_change_interval_sec = 10
+# Target percentage of cores on battery (used as floor when decreasing)
+# Reasoning: Balanced default for battery. When load is low, aims for 50% of logical cores (respecting min_cores), prioritizing E-cores.
+battery_core_percentage = 50
 
-# Window size for load averaging (in seconds)
-load_window_sec = 30
+# Target percentage of cores on AC power (used as floor when decreasing)
+# Reasoning: Less aggressive power saving on AC. Allows using up to 100% cores if load is high, floor is min_cores on low load.
+ac_core_percentage = 100
+
+# Average CPU load threshold (%) to trigger core changes on battery
+# Reasoning: Moderate threshold (increases above 1.2*45=54%, decreases below 0.8*45=36%). Balances responsiveness and power saving.
+cpu_load_threshold = 45.0
+
+# Average CPU load threshold (%) to trigger core changes on AC power
+# Reasoning: Higher threshold on AC (increases above 1.2*80=96%, decreases below 0.8*80=64%). Avoids unnecessary core changes when plugged in.
+ac_cpu_load_threshold = 80.0
+
+# Duration (seconds) over which to average CPU load
+# Reasoning: Smooths out temporary load spikes, preventing overly reactive core changes.
+load_window_sec = 30 # How many seconds of load history to average (default 30)
+
+# --- Energy Performance Preference (EPP) --- (Values: power, balance_power, balance_performance, performance)
+battery_epp = "balance_power" # EPP hint when on battery
+ac_epp = "balance_performance" # EPP hint when on AC power
+
+# Minimum time (seconds) between core count adjustments
+# Reasoning: Cooldown period after a change, prevents rapid oscillation if load hovers near a threshold.
+min_change_interval_sec = 5
+
+# How often (seconds) to check load and power state
+# Reasoning: Frequency of polling. 5s is a balance between responsiveness and efficiency.
+check_interval_sec = 5
+
+# Delay (milliseconds) before applying core changes (less critical)
+# Reasoning: Small delay, potentially helps avoid race conditions during state changes.
+transition_delay_ms = 500

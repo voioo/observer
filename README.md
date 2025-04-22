@@ -1,19 +1,21 @@
 # Observer
 
-A dynamic CPU core manager for Linux systems that "intelligently" manages CPU cores based on system load and power state to help reduce power consumption.
+A dynamic CPU core manager for Linux systems that "intelligently" manages CPU cores based on system load and power state to help reduce power consumption. The application can be compiled on other systems (like macOS), but core management functionality is only active on Linux.
 
 ## Features
 
-- Dynamic core management:
-  - Automatically reduces active cores when running on battery
+- Dynamic core management (Linux-only):
+  - Automatically adjusts active cores when running on battery vs AC power
   - Scales cores up/down based on real-time CPU load
-  - Proper handling of CPU HyperThreading pairs
+  - Aware of heterogeneous architectures (P-cores vs E-cores) on supported systems, prioritizing P-cores for performance
+  - Proper handling of CPU HyperThreading/SMT pairs
   - Smooth transitions between states
   - Always maintains system responsiveness with minimum core count
 
 - Configurable settings:
-  - Battery mode core percentage
-  - CPU load thresholds for scaling
+  - Battery mode core percentage (`battery_core_percentage`)
+  - AC power mode core percentage (`ac_core_percentage`)
+  - CPU load thresholds for scaling (separate for battery and AC)
   - Minimum core count
   - Check intervals
   - Core transition delays
@@ -59,14 +61,20 @@ The configuration file is located at `/etc/observer/config.toml`:
 # Percentage of cores to enable when on battery (1-100)
 battery_core_percentage = 50
 
+# Percentage of cores to enable when on AC power (1-100)
+ac_core_percentage = 100
+
 # Delay in milliseconds between enabling/disabling each core
 transition_delay_ms = 500
 
 # How often to check power state and CPU load (in seconds)
 check_interval_sec = 5
 
-# CPU load threshold percentage to trigger core count adjustment
-cpu_load_threshold = 40.0
+# CPU load threshold percentage to trigger core count adjustment (when on battery)
+cpu_load_threshold = 75.0
+
+# CPU load threshold percentage to trigger core count adjustment (when on AC)
+ac_cpu_load_threshold = 90.0
 
 # Minimum number of cores to keep enabled
 min_cores = 2
@@ -108,6 +116,11 @@ cargo build --release
 # Install (optional)
 sudo chmod +x install.sh && sudo ./install.sh
 ```
+
+## Platform Support
+
+- **Linux (x86_64, aarch64, armv7):** Full feature support, including dynamic core management and P/E core awareness (where applicable).
+- **macOS / Other non-Linux:** Compiles and runs, but core management features are disabled. The application will log warnings indicating this and operate with all cores available to the OS.
 
 ## Architecture Support
 

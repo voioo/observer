@@ -4,4 +4,4 @@ pub mod system;
 pub mod utils;
 
 pub use config::Settings;
-pub use core::{CPUTopology, CoreManager};
+pub use core::{topology::CPUTopology, CoreManager};

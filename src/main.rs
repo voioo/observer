@@ -1,72 +1,90 @@
 use log::{debug, error, info, warn};
 use std::error::Error;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::thread;
 use std::time::Duration;
 
-use observer::{
-    config::{self, Settings},
-    core::CoreManager,
-    system::power::is_on_battery,
-    utils::logging,
-};
+use crate::utils::logging;
+
+mod config;
+mod core;
+mod system;
+mod utils;
 
 fn main() -> Result<(), Box<dyn Error>> {
     logging::init();
     println!("Starting Observer...");
     info!("Starting Observer");
 
-    let available_cores = CoreManager::get_available_cores();
+    #[cfg(target_os = "linux")]
+    let available_cores = crate::core::CoreManager::get_available_cores()?;
+    #[cfg(target_os = "linux")]
     println!(
         "Found {} CPU cores: {:?}",
         available_cores.len(),
         available_cores
     );
 
-    let settings = match config::load_config() {
-        Ok(settings) => {
-            info!("Loaded configuration: {:?}", settings.clone());
-            settings
+    let settings = match crate::config::load_config() {
+        Ok(s) => {
+            info!("Loaded configuration: {:?}", s.clone());
+            s
         }
         Err(e) => {
             warn!("Failed to load config, using defaults: {}", e);
-            Settings::default()
+            crate::config::Settings::default()
         }
     };
+
+    info!("Loaded configuration: {:?}", settings);
 
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
     ctrlc::set_handler(move || {
-        info!("Shutdown signal received, initiating cleanup...");
+        info!("Shutdown signal received, exiting...");
         r.store(false, Ordering::SeqCst);
-    })?;
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    info!("Initializing Core Manager...");
+    let mut core_manager = crate::core::CoreManager::new(settings.clone())?;
+    info!("Core Manager initialized successfully.");
+
+    info!("Starting main loop...");
 
     let check_interval = settings.check_interval_sec;
-    let mut core_manager = CoreManager::new(settings);
+    #[cfg(target_os = "linux")]
     let power_supply_path = "/sys/class/power_supply/";
 
     info!("Starting main service loop");
     while running.load(Ordering::SeqCst) {
-        match is_on_battery(power_supply_path) {
-            Ok(on_battery) => {
+        debug!("Main loop iteration");
+
+        #[cfg(target_os = "linux")]
+        let power_state_result = crate::system::power::get_power_state(power_supply_path);
+        #[cfg(not(target_os = "linux"))]
+        let power_state_result = Ok(crate::system::power::PowerState::AC);
+
+        match power_state_result {
+            Ok(power_state) => {
+                let on_battery = power_state == crate::system::power::PowerState::Battery;
                 debug!(
-                    "Power state check - running on {}",
-                    if on_battery { "battery" } else { "AC power" }
+                    "Current power state: {:?}, On Battery: {}",
+                    power_state, on_battery
                 );
-                let optimal_cores = core_manager.get_optimal_core_count(on_battery);
-                debug!(
-                    "Calculated optimal cores: {} (current: {})",
-                    optimal_cores,
-                    core_manager.current_cores()
-                );
+
+                let optimal_cores = core_manager.get_optimal_core_count(on_battery)?;
+                debug!("Optimal core count: {}", optimal_cores);
 
                 if let Err(e) = core_manager.manage_cpu_cores(optimal_cores) {
                     error!("Failed to manage CPU cores: {}", e);
                 }
             }
             Err(e) => {
-                error!("Failed to determine power state: {}", e);
+                error!("Failed to get power state: {}. Assuming AC power.", e);
             }
         }
 
