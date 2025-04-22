@@ -43,9 +43,7 @@ impl CoreManager {
             topology,
             sys: System::new_all(),
             current_cores: initial_cores,
-            load_tracker: LoadTracker::new(Duration::from_secs(
-                settings_clone.load_window_sec,
-            )),
+            load_tracker: LoadTracker::new(Duration::from_secs(settings_clone.load_window_sec)),
             last_power_state: None,
         })
     }
