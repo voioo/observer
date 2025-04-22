@@ -44,7 +44,7 @@ impl CoreManager {
             sys: System::new_all(),
             current_cores: initial_cores,
             load_tracker: LoadTracker::new(Duration::from_secs(
-                settings_clone.load_window_sec as u64,
+                settings_clone.load_window_sec,
             )),
             last_power_state: None,
         })
@@ -113,11 +113,9 @@ impl CoreManager {
                         i
                     );
                 }
-            } else {
-                if i > 0 {
-                    // Don't break immediately if cpu0 is missing for some reason
-                    break;
-                }
+            } else if i > 0 {
+                // Don't break immediately if cpu0 is missing for some reason
+                break;
             }
         }
 
