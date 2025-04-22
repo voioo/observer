@@ -1,14 +1,20 @@
 # Percentage of cores to enable when on battery (1-100)
 battery_core_percentage = 50
 
+# Percentage of cores to enable when on AC power (1-100)
+ac_core_percentage = 100
+
 # Delay in milliseconds between enabling/disabling each core
 transition_delay_ms = 500
 
 # How often to check power state and CPU load (in seconds)
 check_interval_sec = 5
 
-# CPU load threshold percentage to trigger core count adjustment
+# CPU load threshold percentage to trigger core count adjustment (when on battery)
 cpu_load_threshold = 75.0
+
+# CPU load threshold percentage to trigger core count adjustment (when on AC)
+ac_cpu_load_threshold = 90.0
 
 # Minimum number of cores to keep enabled
 min_cores = 2
