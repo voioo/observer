@@ -202,9 +202,12 @@ jobs:
       - name: Extract checksums
         id: checksums
         run: |
-          SHA_AMD64=$(cut -d' ' -f1 ./artifacts/observer-linux-amd64-artifacts/observer-linux-amd64.sha256)
-          SHA_ARM64=$(cut -d' ' -f1 ./artifacts/observer-linux-arm64-artifacts/observer-linux-arm64.sha256)
-          SHA_ARMV7=$(cut -d' ' -f1 ./artifacts/observer-linux-armv7-artifacts/observer-linux-armv7.sha256)
+          # List the artifact contents to debug
+          find ./artifacts -type f -name "*.sha256"
+          
+          SHA_AMD64=$(cut -d' ' -f1 ./artifacts/observer-linux-amd64-artifacts/release/observer-linux-amd64.sha256)
+          SHA_ARM64=$(cut -d' ' -f1 ./artifacts/observer-linux-arm64-artifacts/release/observer-linux-arm64.sha256)
+          SHA_ARMV7=$(cut -d' ' -f1 ./artifacts/observer-linux-armv7-artifacts/release/observer-linux-armv7.sha256)
           
           # Validate checksums aren't empty
           if [[ -z "$SHA_AMD64" || -z "$SHA_ARM64" || -z "$SHA_ARMV7" ]]; then
