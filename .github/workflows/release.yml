@@ -1,7 +1,4 @@
 name: Release
-
-
-
 on:
   workflow_dispatch:
     inputs:
@@ -107,28 +104,84 @@ jobs:
   aur-publish:
     needs: release
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Set version and URLs
+        id: vars
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          # Remove 'v' prefix from tag for PKGVER
+          PKGVER="${TAG_NAME#v}" 
+          REPO_URL="https://github.com/${{ github.repository }}"
+          DL_URL="$REPO_URL/releases/download/$TAG_NAME"
+          
+          echo "PKGVER=$PKGVER" >> $GITHUB_OUTPUT
+          echo "REPO_URL=$REPO_URL" >> $GITHUB_OUTPUT
+          echo "DOWNLOAD_URL=$DL_URL" >> $GITHUB_OUTPUT
+
+      - name: Download Checksums
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          gh release download "$TAG_NAME" --pattern '*.sha256' -R ${{ github.repository }}
+
+      - name: Read Checksums
+        id: checksums
+        run: |
+          # Ensure files exist before reading
+          if [[ ! -f observer-linux-amd64.sha256 || ! -f observer-linux-arm64.sha256 || ! -f observer-linux-armv7.sha256 ]]; then
+            echo "Error: One or more checksum files not found after download."
+            exit 1
+          fi
+          # Read first word (the checksum) from each file
+          SHA_AMD64=$(cut -d' ' -f1 observer-linux-amd64.sha256)
+          SHA_ARM64=$(cut -d' ' -f1 observer-linux-arm64.sha256)
+          SHA_ARMV7=$(cut -d' ' -f1 observer-linux-armv7.sha256)
+          
+          echo "SHA_AMD64=$SHA_AMD64" >> $GITHUB_OUTPUT
+          echo "SHA_ARM64=$SHA_ARM64" >> $GITHUB_OUTPUT
+          echo "SHA_ARMV7=$SHA_ARMV7" >> $GITHUB_OUTPUT
+          
+          echo "Checksums extracted:"
+          echo "AMD64: $SHA_AMD64"
+          echo "ARM64: $SHA_ARM64"
+          echo "ARMV7: $SHA_ARMV7"
+
       - name: Update PKGBUILD
         run: |
           PKGVER="${{ steps.vars.outputs.PKGVER }}"
           REPO_URL="${{ steps.vars.outputs.REPO_URL }}"
-          DL_URL="${{ steps.vars.outputs.DOWNLOAD_URL }}" # Re-fetch or pass via env
+          DL_URL="${{ steps.vars.outputs.DOWNLOAD_URL }}" 
           SHA_AMD64="${{ steps.checksums.outputs.SHA_AMD64 }}"
           SHA_ARM64="${{ steps.checksums.outputs.SHA_ARM64 }}"
           SHA_ARMV7="${{ steps.checksums.outputs.SHA_ARMV7 }}"
+          
+          # Check if variables are empty (add this for debugging)
+          if [[ -z "$PKGVER" || -z "$DL_URL" || -z "$SHA_AMD64" || -z "$SHA_ARM64" || -z "$SHA_ARMV7" ]]; then
+            echo "Error: One or more variables required for PKGBUILD update are empty."
+            echo "PKGVER: $PKGVER"
+            echo "DL_URL: $DL_URL"
+            echo "SHA_AMD64: $SHA_AMD64"
+            echo "SHA_ARM64: $SHA_ARM64"
+            echo "SHA_ARMV7: $SHA_ARMV7"
+            exit 1
+          fi
 
           echo "Updating PKGBUILD for version $PKGVER..."
 
           # Update pkgver
-          sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
+          # Use a different delimiter for sed in case PKGVER contains slashes
+          sed -i "s|^pkgver=.*|pkgver=$PKGVER|" PKGBUILD 
           # Reset pkgrel
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
           # Update source URLs (using :: to rename the downloaded file)
-          sed -i "s|^source_x86_64=.*|source_x86_64=("observer-\$pkgver-amd64.tar.gz::$DL_URL/observer-linux-amd64.tar.gz")|" PKGBUILD
-          sed -i "s|^source_aarch64=.*|source_aarch64=("observer-\$pkgver-arm64.tar.gz::$DL_URL/observer-linux-arm64.tar.gz")|" PKGBUILD
-          sed -i "s|^source_armv7h=.*|source_armv7h=("observer-\$pkgver-armv7.tar.gz::$DL_URL/observer-linux-armv7.tar.gz")|" PKGBUILD
+          # Escape slashes in DL_URL for sed
+          DL_URL_ESC=$(sed 's/\//\\\//g' <<< "$DL_URL")
+          sed -i "s|^source_x86_64=.*|source_x86_64=(\"observer-\$pkgver-amd64.tar.gz::$DL_URL_ESC/observer-linux-amd64.tar.gz\")|" PKGBUILD
+          sed -i "s|^source_aarch64=.*|source_aarch64=(\"observer-\$pkgver-arm64.tar.gz::$DL_URL_ESC/observer-linux-arm64.tar.gz\")|" PKGBUILD
+          sed -i "s|^source_armv7h=.*|source_armv7h=(\"observer-\$pkgver-armv7.tar.gz::$DL_URL_ESC/observer-linux-armv7.tar.gz\")|" PKGBUILD
           # Update sha256sums
           sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('$SHA_AMD64')/" PKGBUILD
           sed -i "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('$SHA_ARM64')/" PKGBUILD
@@ -155,4 +208,4 @@ jobs:
           commit_username: ${{ secrets.AUR_USERNAME }}
           commit_email: ${{ secrets.AUR_EMAIL }}
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "Update to version ${{ github.ref_name }}"
+          commit_message: "Update to version ${{ steps.vars.outputs.PKGVER }}" # Use the extracted version here too
