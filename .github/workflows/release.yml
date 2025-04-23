@@ -1,115 +1,178 @@
 name: Release
+
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release'
+        description: 'Version to release (without v prefix)'
         required: true
-        default: 'latest'
+        type: string
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
 
 permissions:
-  contents: write
+  contents: write  # Needed for uploading release assets
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1  # Better error reporting
 
 jobs:
-  test:
-    name: Run Tests
+  # Validate and test the code before building releases
+  validate:
+    name: Test & Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
       
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-          
+      
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Run code formatting check
+        run: cargo fmt --all -- --check
+      
+      - name: Run linter
+        run: cargo clippy -- -D warnings
+      
       - name: Run tests
-        run: |
-          cargo fmt --all -- --check
-          cargo clippy -- -D warnings
-          cargo test
+        run: cargo test
 
+  # Build releases for multiple architectures
   release:
-    needs: test
-    name: Release - ${{ matrix.platform.release_for }}
+    needs: validate
+    name: Build ${{ matrix.platform.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
+      fail-fast: false  # Continue with other builds if one fails
       matrix:
         platform:
-          - release_for: Linux-x86_64
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            bin: observer
+          - target: x86_64-unknown-linux-gnu
             name: observer-linux-amd64
-          - release_for: Linux-aarch64
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            bin: observer
+            arch_name: amd64
+            arch_pkg: x86_64
+            gcc_package: gcc
+          - target: aarch64-unknown-linux-gnu
             name: observer-linux-arm64
-          - release_for: Linux-armv7
-            os: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
-            bin: observer
+            arch_name: arm64
+            arch_pkg: aarch64
+            gcc_package: gcc-aarch64-linux-gnu
+          - target: armv7-unknown-linux-gnueabihf
             name: observer-linux-armv7
+            arch_name: armv7
+            arch_pkg: armv7h
+            gcc_package: gcc-arm-linux-gnueabihf
 
-    runs-on: ${{ matrix.platform.os }}
-    
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
       
       - name: Install cross-compilation dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabihf
+          sudo apt-get install -y ${{ matrix.platform.gcc_package }}
       
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform.target }}
       
+      - name: Cache Rust dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            ~/.cargo/bin/cross
+          key: ${{ runner.os }}-cargo-${{ matrix.platform.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.platform.target }}-
+            ${{ runner.os }}-cargo-
+      
       - name: Install cross
-        run: cargo install cross
+        run: |
+          if ! command -v cross &> /dev/null; then
+            cargo install cross
+          fi
       
       - name: Build binary
-        run: |
-          for target in ${{ matrix.platform.target }}; do
-            cross build --release --target $target
-          done
-          
-      - name: Prepare release assets
+        run: cross build --release --target ${{ matrix.platform.target }}
+      
+      - name: Create release archive
         run: |
           mkdir -p release
-          cp target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} release/${{ matrix.platform.name }}
+          cp target/${{ matrix.platform.target }}/release/observer release/${{ matrix.platform.name }}
           cp config.toml release/
           cp observer.service release/
           cp install.sh release/
           cd release && tar czf ../${{ matrix.platform.name }}.tar.gz *
       
       - name: Generate checksums
+        id: checksums
         run: |
           cd release
           sha256sum ${{ matrix.platform.name }} > ${{ matrix.platform.name }}.sha256
-          
-      - name: Upload release with checksums
+          echo "SHA=$(cut -d' ' -f1 ${{ matrix.platform.name }}.sha256)" >> $GITHUB_OUTPUT
+      
+      - name: Upload artifacts for AUR job
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.platform.name }}-artifacts
+          path: |
+            ${{ matrix.platform.name }}.tar.gz
+            release/${{ matrix.platform.name }}.sha256
+          retention-days: 1
+      
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          VERSION="${TAG_NAME#v}"
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             ${{ matrix.platform.name }}.tar.gz
-            ${{ matrix.platform.name }}.sha256
+            release/${{ matrix.platform.name }}.sha256
+          name: Observer v${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          fail_on_unmatched_files: true
 
+  # Publish package to AUR (Arch User Repository)
   aur-publish:
+    name: Publish to AUR
     needs: release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Set version and URLs
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Extract version info
         id: vars
         run: |
           TAG_NAME="${{ github.ref_name }}"
@@ -121,24 +184,27 @@ jobs:
           echo "PKGVER=$PKGVER" >> $GITHUB_OUTPUT
           echo "REPO_URL=$REPO_URL" >> $GITHUB_OUTPUT
           echo "DOWNLOAD_URL=$DL_URL" >> $GITHUB_OUTPUT
-
-      - name: Download Checksums
-        run: |
-          TAG_NAME="${{ github.ref_name }}"
-          gh release download "$TAG_NAME" --pattern '*.sha256' -R ${{ github.repository }}
-
-      - name: Read Checksums
+      
+      - name: Download release artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: ./artifacts
+      
+      - name: Extract checksums
         id: checksums
         run: |
-          # Ensure files exist before reading
-          if [[ ! -f observer-linux-amd64.sha256 || ! -f observer-linux-arm64.sha256 || ! -f observer-linux-armv7.sha256 ]]; then
-            echo "Error: One or more checksum files not found after download."
+          SHA_AMD64=$(cut -d' ' -f1 ./artifacts/observer-linux-amd64-artifacts/observer-linux-amd64.sha256)
+          SHA_ARM64=$(cut -d' ' -f1 ./artifacts/observer-linux-arm64-artifacts/observer-linux-arm64.sha256)
+          SHA_ARMV7=$(cut -d' ' -f1 ./artifacts/observer-linux-armv7-artifacts/observer-linux-armv7.sha256)
+          
+          # Validate checksums aren't empty
+          if [[ -z "$SHA_AMD64" || -z "$SHA_ARM64" || -z "$SHA_ARMV7" ]]; then
+            echo "Error: One or more checksums are empty"
+            echo "AMD64: $SHA_AMD64"
+            echo "ARM64: $SHA_ARM64"
+            echo "ARMV7: $SHA_ARMV7"
             exit 1
           fi
-          # Read first word (the checksum) from each file
-          SHA_AMD64=$(cut -d' ' -f1 observer-linux-amd64.sha256)
-          SHA_ARM64=$(cut -d' ' -f1 observer-linux-arm64.sha256)
-          SHA_ARMV7=$(cut -d' ' -f1 observer-linux-armv7.sha256)
           
           echo "SHA_AMD64=$SHA_AMD64" >> $GITHUB_OUTPUT
           echo "SHA_ARM64=$SHA_ARM64" >> $GITHUB_OUTPUT
@@ -148,7 +214,7 @@ jobs:
           echo "AMD64: $SHA_AMD64"
           echo "ARM64: $SHA_ARM64"
           echo "ARMV7: $SHA_ARMV7"
-
+      
       - name: Update PKGBUILD
         run: |
           PKGVER="${{ steps.vars.outputs.PKGVER }}"
@@ -158,9 +224,9 @@ jobs:
           SHA_ARM64="${{ steps.checksums.outputs.SHA_ARM64 }}"
           SHA_ARMV7="${{ steps.checksums.outputs.SHA_ARMV7 }}"
           
-          # Check if variables are empty (add this for debugging)
+          # Ensure all variables are set
           if [[ -z "$PKGVER" || -z "$DL_URL" || -z "$SHA_AMD64" || -z "$SHA_ARM64" || -z "$SHA_ARMV7" ]]; then
-            echo "Error: One or more variables required for PKGBUILD update are empty."
+            echo "Error: Required variables for PKGBUILD update are empty"
             echo "PKGVER: $PKGVER"
             echo "DL_URL: $DL_URL"
             echo "SHA_AMD64: $SHA_AMD64"
@@ -168,39 +234,48 @@ jobs:
             echo "SHA_ARMV7: $SHA_ARMV7"
             exit 1
           fi
-
+          
           echo "Updating PKGBUILD for version $PKGVER..."
-
-          # Update pkgver
-          # Use a different delimiter for sed in case PKGVER contains slashes
+          
+          # Update pkgver with proper delimiter to handle slashes
           sed -i "s|^pkgver=.*|pkgver=$PKGVER|" PKGBUILD 
+          
           # Reset pkgrel
-          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
-          # Update source URLs (using :: to rename the downloaded file)
+          sed -i "s|^pkgrel=.*|pkgrel=1|" PKGBUILD
+          
           # Escape slashes in DL_URL for sed
           DL_URL_ESC=$(sed 's/\//\\\//g' <<< "$DL_URL")
+          
+          # Update source URLs with proper quoting
           sed -i "s|^source_x86_64=.*|source_x86_64=(\"observer-\$pkgver-amd64.tar.gz::$DL_URL_ESC/observer-linux-amd64.tar.gz\")|" PKGBUILD
           sed -i "s|^source_aarch64=.*|source_aarch64=(\"observer-\$pkgver-arm64.tar.gz::$DL_URL_ESC/observer-linux-arm64.tar.gz\")|" PKGBUILD
           sed -i "s|^source_armv7h=.*|source_armv7h=(\"observer-\$pkgver-armv7.tar.gz::$DL_URL_ESC/observer-linux-armv7.tar.gz\")|" PKGBUILD
-          # Update sha256sums
-          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('$SHA_AMD64')/" PKGBUILD
-          sed -i "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('$SHA_ARM64')/" PKGBUILD
-          sed -i "s/^sha256sums_armv7h=.*/sha256sums_armv7h=('$SHA_ARMV7')/" PKGBUILD
-
-          echo "PKGBUILD updated:"
-          cat PKGBUILD
           
+          # Update checksums
+          sed -i "s|^sha256sums_x86_64=.*|sha256sums_x86_64=('$SHA_AMD64')|" PKGBUILD
+          sed -i "s|^sha256sums_aarch64=.*|sha256sums_aarch64=('$SHA_ARM64')|" PKGBUILD
+          sed -i "s|^sha256sums_armv7h=.*|sha256sums_armv7h=('$SHA_ARMV7')|" PKGBUILD
+          
+          echo "PKGBUILD updated successfully"
+      
+      - name: Show updated PKGBUILD
+        run: cat PKGBUILD
+      
+      - name: Pull Arch Linux Docker image
+        run: docker pull archlinux:base-devel
+      
       - name: Generate .SRCINFO
         run: |
-          docker run --rm -v $PWD:/pkg -w /pkg archlinux:base-devel bash -c '
+          docker run --rm -v $PWD:/pkg -w /pkg \
+            archlinux:base-devel bash -c '
               pacman -Syu --noconfirm && 
               pacman -S --noconfirm pacman-contrib &&
               useradd builduser -m &&
               chown -R builduser:builduser /pkg &&
               su builduser -c "makepkg --printsrcinfo > .SRCINFO"
-          '
-
-      - name: Publish to AUR
+            '
+      
+      - name: Deploy to AUR
         uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
         with:
           pkgname: observer
@@ -208,4 +283,4 @@ jobs:
           commit_username: ${{ secrets.AUR_USERNAME }}
           commit_email: ${{ secrets.AUR_EMAIL }}
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "Update to version ${{ steps.vars.outputs.PKGVER }}" # Use the extracted version here too
+          commit_message: "Update to version ${{ steps.vars.outputs.PKGVER }}"
