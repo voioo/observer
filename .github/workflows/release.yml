@@ -184,9 +184,19 @@ jobs:
       - name: Extract version info
         id: vars
         run: |
-          TAG_NAME="${{ github.ref_name }}"
-          # Remove 'v' prefix from tag for PKGVER
-          PKGVER="${TAG_NAME#v}" 
+          # Handle both manual workflow dispatch and tag-based triggers
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ github.event.inputs.version }}" ]]; then
+            # For manual workflow dispatch with version input
+            VERSION="${{ github.event.inputs.version }}"
+            TAG_NAME="v$VERSION"
+            PKGVER="$VERSION"
+          else
+            # For tag-based trigger
+            TAG_NAME="${{ github.ref_name }}"
+            # Remove 'v' prefix from tag for PKGVER
+            PKGVER="${TAG_NAME#v}"
+          fi
+          
           REPO_URL="https://github.com/${{ github.repository }}"
           DL_URL="$REPO_URL/releases/download/$TAG_NAME"
           
