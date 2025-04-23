@@ -132,7 +132,7 @@ jobs:
           echo "SHA=$(cut -d' ' -f1 ${{ matrix.platform.name }}.sha256)" >> $GITHUB_OUTPUT
       
       - name: Upload artifacts for AUR job
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform.name }}-artifacts
           path: |
@@ -148,7 +148,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
       
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ matrix.platform.name }}.tar.gz
@@ -186,7 +186,7 @@ jobs:
           echo "DOWNLOAD_URL=$DL_URL" >> $GITHUB_OUTPUT
       
       - name: Download release artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: ./artifacts
       
@@ -276,7 +276,7 @@ jobs:
             '
       
       - name: Deploy to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
         with:
           pkgname: observer
           pkgbuild: ./PKGBUILD
